@@ -1,0 +1,193 @@
+#!/bin/bash
+
+# ==============================================================================
+# HYPR-ACTIVITY DISPATCHER
+# ==============================================================================
+# Mimics KDE Plasma's activity functionality in Hyprland.
+# Usage: activities <command> [argument]
+#
+# Commands:
+#   next           - Cycle to the next activity (auto-creates if at end)
+#   prev           - Cycle to the previous activity
+#   switch <name>  - Switch to a specific activity by name
+#   list           - List all activities and which one is active
+#   info <name>    - List windows in a specific activity (sorted by workspace)
+#   delete <name>  - Delete an activity and restore its windows to current
+# ==============================================================================
+
+STATE_DIR="$HOME/.cache/hypr-activities"
+mkdir -p "$STATE_DIR"
+
+LIST_FILE="$STATE_DIR/list"
+CURRENT_ACT_FILE="$STATE_DIR/current"
+
+# Initialize state if files are missing
+[ ! -f "$LIST_FILE" ] && echo "default" > "$LIST_FILE"
+[ ! -f "$CURRENT_ACT_FILE" ] && echo "default" > "$CURRENT_ACT_FILE"
+
+CURRENT_ACT=$(cat "$CURRENT_ACT_FILE")
+COMMAND=$1
+ARG=$2
+
+# --- Internal: Get Activity Stack ---
+get_stack() {
+    IFS=$'
+' read -d '' -r -a STACK < "$LIST_FILE"
+}
+
+# --- Internal: Stash Current Windows ---
+# Moves all windows on non-special workspaces to a special workspace for this activity
+stash_active() {
+    local activity=$1
+    echo "Processing stash for: $activity"
+    
+    # NEW: Save current workspace ID before switching away
+    hyprctl activeworkspace -j | jq '.id' > "$STATE_DIR/$activity.last_ws"
+    
+    # Get all windows not on a special workspace
+    local windows=$(hyprctl clients -j | jq -c '.[] | select(.workspace.id > 0)')
+    local win_count=$(echo "$windows" | jq '. | length')
+    
+    # --- AUTO-CLEANUP LOGIC ---
+    # If switching away and ONLY kitty is open, delete the activity and kill kitty
+    if [ "$win_count" -eq 1 ] && [ "$activity" != "default" ]; then
+        local win_class=$(echo "$windows" | jq -r '.[0].class')
+        if [ "$win_class" == "kitty" ]; then
+            local win_addr=$(echo "$windows" | jq -r '.[0].address')
+            echo "Auto-deleting ephemeral activity $activity (only kitty open)"
+            hyprctl dispatch closewindow "address:$win_addr"
+            sed -i "/^$activity$/d" "$LIST_FILE"
+            rm -f "$STATE_DIR/$activity.map"
+            rm -f "$STATE_DIR/$activity.last_ws"
+            return 0
+        fi
+    fi
+
+    if [ ! -z "$windows" ] && [ "$windows" != "[]" ]; then
+        # Map address to workspace ID for restoration
+        echo "$windows" | jq -r '.address + " " + (.workspace.id|tostring)' > "$STATE_DIR/$activity.map"
+        
+        # Batch move to hidden special workspace unique to this activity
+        while read -r addr wid; do
+            hyprctl dispatch movetoworkspacesilent "special:act_$activity,address:$addr"
+        done < "$STATE_DIR/$activity.map"
+    else
+        # Clear map if no windows exist
+        rm -f "$STATE_DIR/$activity.map"
+    fi
+}
+
+# --- Internal: Restore Target Windows ---
+restore_target() {
+    local activity=$1
+    echo "Restoring windows for: $activity"
+    
+    # First, restore windows to their specific workspaces silently
+    if [ -f "$STATE_DIR/$activity.map" ]; then
+        while read -r addr wid; do
+            hyprctl dispatch movetoworkspacesilent "$wid,address:$addr"
+        done < "$STATE_DIR/$activity.map"
+    fi
+
+    # NEW: Switch focus back to the workspace where this activity was left
+    if [ -f "$STATE_DIR/$activity.last_ws" ]; then
+        local target_ws=$(cat "$STATE_DIR/$activity.last_ws")
+        hyprctl dispatch workspace "$target_ws"
+    else
+        # Default to workspace 1 for new activities
+        hyprctl dispatch workspace 1
+    fi
+}
+
+# --- Command Handler ---
+case "$COMMAND" in
+    next|prev)
+        get_stack
+        CUR_IDX=-1
+        for i in "${!STACK[@]}"; do
+            [[ "${STACK[$i]}" == "$CURRENT_ACT" ]] && CUR_IDX=$i && break
+        done
+        
+        # Determine Target
+        if [ "$COMMAND" == "next" ]; then
+            TARGET_IDX=$((CUR_IDX + 1))
+            if [ "$TARGET_IDX" -ge "${#STACK[@]}" ]; then
+                TARGET_ACT="activity_${#STACK[@]}"
+                echo "$TARGET_ACT" >> "$LIST_FILE"
+                NEW_INITIALIZATION=true
+            else
+                TARGET_ACT="${STACK[$TARGET_IDX]}"
+            fi
+        else
+            TARGET_IDX=$((CUR_IDX - 1))
+            if [ "$TARGET_IDX" -lt 0 ]; then
+                notify-send "Activities" "Already at the top activity (default)" -t 1000
+                exit 0
+            fi
+            TARGET_ACT="${STACK[$TARGET_IDX]}"
+        fi
+        
+        # Execute Switch
+        stash_active "$CURRENT_ACT"
+        echo "$TARGET_ACT" > "$CURRENT_ACT_FILE"
+        restore_target "$TARGET_ACT"
+        
+        # Launch kitty on workspace 1 if this is a brand new activity
+        if [ "$NEW_INITIALIZATION" = true ]; then
+            hyprctl dispatch workspace 1
+            hyprctl dispatch exec kitty
+        fi
+        
+        notify-send "Activity Switched" "Active: $TARGET_ACT" -i "preferences-desktop-workspaces" -t 1500
+        ;;
+
+    switch)
+        [ -z "$ARG" ] && echo "Error: Missing activity name" && exit 1
+        grep -qxF "$ARG" "$LIST_FILE" || { echo "Error: Activity '$ARG' not found"; exit 1; }
+        [ "$ARG" == "$CURRENT_ACT" ] && echo "Already in $ARG" && exit 0
+        
+        stash_active "$CURRENT_ACT"
+        echo "$ARG" > "$CURRENT_ACT_FILE"
+        restore_target "$ARG"
+        notify-send "Activity Switched" "Active: $ARG" -t 1500
+        ;;
+
+    list)
+        echo "Activities Stack:"
+        while read -r line; do
+            if [ "$line" == "$CURRENT_ACT" ]; then
+                echo "  -> $line (ACTIVE)"
+            else
+                echo "     $line"
+            fi
+        done < "$LIST_FILE"
+        ;;
+
+    info)
+        TARGET_ACT=${ARG:-$CURRENT_ACT}
+        echo "--- Windows in $TARGET_ACT ---"
+        if [ "$TARGET_ACT" == "$CURRENT_ACT" ]; then
+            hyprctl clients -j | jq -r 'map(select(.workspace.id > 0)) | sort_by(.workspace.id) | .[] | "[\(.workspace.id)] \(.class): \(.title)"'
+        else
+            ws_name="special:act_$TARGET_ACT"
+            output=$(hyprctl clients -j | jq -r --arg ws "$ws_name" 'map(select(.workspace.name == $ws)) | sort_by(.class) | .[] | "[stashed] \(.class): \(.title)"')
+            if [ -z "$output" ]; then echo "(No windows)"; else echo "$output"; fi
+        fi
+        ;;
+
+    delete)
+        [ -z "$ARG" ] || [ "$ARG" == "default" ] && echo "Error: Cannot delete 'default' or missing argument" && exit 1
+        restore_target "$ARG"
+        sed -i "/^$ARG$/d" "$LIST_FILE"
+        rm -f "$STATE_DIR/$ARG.map"
+        rm -f "$STATE_DIR/$ARG.last_ws"
+        echo "Deleted '$ARG'. Windows moved to current activity."
+        ;;
+
+    *)
+        echo "Usage: hypr-activity <command> [arg]"
+        echo "Commands: next, prev, switch <name>, list, info [name], delete <name>"
+        exit 1
+        ;;
+esac
+
