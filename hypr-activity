@@ -177,11 +177,34 @@ case "$COMMAND" in
 
     delete)
         [ -z "$ARG" ] || [ "$ARG" == "default" ] && echo "Error: Cannot delete 'default' or missing argument" && exit 1
-        restore_target "$ARG"
+        
+        # Determine windows to close
+        windows_to_kill=""
+        if [ "$ARG" == "$CURRENT_ACT" ]; then
+             # If deleting current, find all windows on normal workspaces
+             windows_to_kill=$(hyprctl clients -j | jq -r '.[] | select(.workspace.id > 0) | .address')
+        else
+             # If deleting a stashed activity, find all windows in its special workspace
+             ws_name="special:act_$ARG"
+             windows_to_kill=$(hyprctl clients -j | jq -r --arg ws "$ws_name" '.[] | select(.workspace.name == $ws) | .address')
+        fi
+        
+        # Terminate all windows associated with this activity
+        for addr in $windows_to_kill; do
+            hyprctl dispatch closewindow "address:$addr"
+        done
+
+        # Cleanup state files and list
         sed -i "/^$ARG$/d" "$LIST_FILE"
-        rm -f "$STATE_DIR/$ARG.map"
-        rm -f "$STATE_DIR/$ARG.last_ws"
-        echo "Deleted '$ARG'. Windows moved to current activity."
+        rm -f "$STATE_DIR/$ARG.map" "$STATE_DIR/$ARG.last_ws"
+        
+        # If we deleted the current activity, we must switch away to 'default'
+        if [ "$ARG" == "$CURRENT_ACT" ]; then
+             echo "default" > "$CURRENT_ACT_FILE"
+             restore_target "default"
+        fi
+
+        notify-send "Activity Deleted" "All windows in '$ARG' have been closed." -t 1500
         ;;
 
     *)
