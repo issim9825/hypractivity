@@ -1,4 +1,4 @@
-# Hypr-Activity Manager
+# Hypractivity
 
 A lightweight bash-based activity manager for **Hyprland**, designed to mimic the "Activity" functionality found in KDE Plasma.
 
@@ -27,7 +27,7 @@ sudo pacman -S jq libnotify bash-completion
 
 ### 1. The Dispatcher Script
 
-Copy the `hypr-activity` script content from the app to `~/.config/hypr/scripts/hypr-activity` (or any directory in your `$PATH` e.g `/usr/local/bin`).
+Copy the `hypractivity` script content from the app to `~/.config/hypr/scripts/hypractivity` (or any directory in your `$PATH` e.g `/usr/local/bin`).
 
 ```bash
 mkdir -p ~/.config/hypr/scripts
@@ -38,17 +38,17 @@ or
 
 ```bash
 # for global access
-chmod +x ./hypr-activity
-sudo cp ./hypr-activity /usr/local/bin/hypr-activity
+chmod +x ./hypractivity
+sudo cp ./hypractivity /usr/local/bin/hypractivity
 ```
 
 ### 3. Bash Completion
 
-Copy the `completion.sh` content to `~/.config/hypr/scripts/hypr-activity-completion.sh` and source it in your shell config:
+Copy the `completion.sh` content to `~/.config/hypr/scripts/hypractivity-completion.sh` and source it in your shell config:
 
 ```bash
 # In ~/.bashrc of ~/.zshrc
-source ~/.config/hypr/scripts/hypr-activity-completion.sh
+source ~/.config/hypr/scripts/hypractivity-completion.sh
 ```
 
 ## Usage & Commands
