@@ -7,7 +7,7 @@
 # Or source it in your ~/.bashrc
 # ==============================================================================
 
-_hypr_activity_completions() {
+_hypractivity_completions() {
     local cur prev opts
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
@@ -40,5 +40,5 @@ _hypr_activity_completions() {
 }
 
 # Apply completion to both the script name and the likely alias
-complete -F _hypr_activity_completions hypr-activity
+complete -F _hypractivity_completions hypractivity
 
