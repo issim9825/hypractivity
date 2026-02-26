@@ -54,9 +54,9 @@ source ~/.config/hypr/scripts/hypractivity-completion.sh
 or copy the completion to the bash-completion folder and source it
 
 ```bash
-sudo cp ./hypractivity-completion.bash /usr/share/bash-completion/completion/hypractivity
+sudo cp ./hypractivity-completion.bash /usr/share/bash-completion/completions/hypractivity
 # in ~/.bashrc or ~/.zshrc
-source /usr/share/bash-completion/completion/hypractivity
+source /usr/share/bash-completion/completions/hypractivity
 ```
 
 ## Usage & Commands
