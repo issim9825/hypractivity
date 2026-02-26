@@ -64,18 +64,20 @@ source /usr/share/bash-completion/completion/hypractivity
 Commands:
 
 ```
-  next           - Cycle to the next activity
-                   (auto-creates if at end)
-  prev           - Cycle to the
-                   previous activity
-  switch <name>  - Switch to a specific
-                   activity by name
-  list           - List all activities and
-                   which one is active
-  info <name>    - List windows in a specific
-                   activity (sorted by workspace)
-  delete <name>  - Delete an activity and all
-                   its active windows
+  next                - Cycle to the next activity
+                        (auto-creates if at end)
+  prev                - Cycle to the
+                        previous activity
+  switch <name>       - Switch to a specific
+                        activity by name
+  rename <old> <new>  - Rename an activity from
+                        'current name' to 'new name'
+  list                - List all activities and
+                        which one is active
+  info <name>         - List windows in a specific
+                        activity (sorted by workspace)
+  delete <name>       - Delete an activity and all
+                        its active windows
 ```
 
 ## Hyprland Keybinds

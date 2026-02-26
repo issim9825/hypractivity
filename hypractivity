@@ -160,7 +160,34 @@ case "$COMMAND" in
         
         notify-send "Activity Switched" "Active: $ARG" -t 1500
         ;;
+    rename)
+        OLD_NAME="$ARG"
+        NEW_NAME="$3"
 
+        # 1. Validation
+        [ -z "$OLD_NAME" ] || [ -z "$NEW_NAME" ] && echo "Usage: rename <old> <new>" && exit 1
+        ! grep -qxF "$OLD_NAME" "$LIST_FILE" && echo "Error: '$OLD_NAME' not found" && exit 1
+        grep -qxF "$NEW_NAME" "$LIST_FILE" && echo "Error: '$NEW_NAME' already exists" && exit 1
+
+        # 2. Update the Activity List
+        sed -i "s/^$OLD_NAME$/$NEW_NAME/" "$LIST_FILE"
+
+        # 3. Rename the State Files (Crucial for restore_target)
+        if [ -f "$STATE_DIR/$OLD_NAME.map" ]; then
+            mv "$STATE_DIR/$OLD_NAME.map" "$STATE_DIR/$NEW_NAME.map"
+        fi
+        if [ -f "$STATE_DIR/$OLD_NAME.last_ws" ]; then
+            mv "$STATE_DIR/$OLD_NAME.last_ws" "$STATE_DIR/$NEW_NAME.last_ws"
+        fi
+
+        # 4. Handle current activity pointer
+        if [ "$OLD_NAME" == "$CURRENT_ACT" ]; then
+            echo "$NEW_NAME" > "$CURRENT_ACT_FILE"
+        fi
+
+        echo "Successfully renamed '$OLD_NAME' to '$NEW_NAME'."
+        notify-send "Activity Renamed" "$OLD_NAME -> $NEW_NAME" -t 2000
+        ;;
     list)
         echo "Activities Stack:"
         while read -r line; do
@@ -216,9 +243,26 @@ case "$COMMAND" in
         notify-send "Activity Deleted" "All windows in '$ARG' have been closed." -t 1500
         ;;
 
-    *)
+   *)
         echo "Usage: hypractivity <command> [arg]"
-        echo "Commands: next, prev, switch <name>, list, info [name], delete <name>"
+        cat <<EOF
+  
+    next                - Cycle to the next activity
+                          (auto-creates if at end)
+    prev                - Cycle to the
+                          previous activity
+    switch <name>       - Switch to a specific
+                          activity by name
+    rename <old> <new>  - Rename an activity from
+                          'current name' to 'new name'
+    list                - List all activities and
+                          which one is active
+    info <name>         - List windows in a specific
+                          activity (sorted by workspace)
+    delete <name>       - Delete an activity and all
+                          its active windows
+                          
+EOF
         exit 1
         ;;
 esac
