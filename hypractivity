@@ -143,12 +143,21 @@ case "$COMMAND" in
 
     switch)
         [ -z "$ARG" ] && echo "Error: Missing activity name" && exit 1
-        grep -qxF "$ARG" "$LIST_FILE" || { echo "Error: Activity '$ARG' not found"; exit 1; }
+
+        # If activity doesn't exist in the list, add it
+        if ! grep -qxF "$ARG" "$LIST_FILE"; then
+            echo "$ARG" >> "$LIST_FILE"
+            echo "Created new activity: $ARG"
+        fi
+
+        # If we are already on this activity, no need to do anything
         [ "$ARG" == "$CURRENT_ACT" ] && echo "Already in $ARG" && exit 0
         
+        # Perform the switch
         stash_active "$CURRENT_ACT"
         echo "$ARG" > "$CURRENT_ACT_FILE"
         restore_target "$ARG"
+        
         notify-send "Activity Switched" "Active: $ARG" -t 1500
         ;;
 

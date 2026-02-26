@@ -16,21 +16,22 @@ _hypractivity_completions() {
     # Primary Subcommands
     opts="next prev switch list info delete"
 
-    # State file path
+    # State file path (Must match your main script)
     local LIST_FILE="$HOME/.cache/hypr-activities/list"
 
-    # If completing the first argument (the subcommand)
+    # 1. Complete the subcommand
     if [[ ${COMP_CWORD} -eq 1 ]]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
         return 0
     fi
 
-    # If completing the second argument (the activity name)
+    # 2. Complete the activity name for specific subcommands
     if [[ ${COMP_CWORD} -eq 2 ]]; then
         case "$prev" in
             switch|info|delete)
                 if [[ -f "$LIST_FILE" ]]; then
-                    local activities=$(cat "$LIST_FILE" 2>/dev/null)
+                    # Read the list file into an array to handle potential spaces/newlines
+                    local activities=$(cat "$LIST_FILE")
                     COMPREPLY=( $(compgen -W "$activities" -- "$cur") )
                 fi
                 return 0
@@ -39,6 +40,5 @@ _hypractivity_completions() {
     fi
 }
 
-# Apply completion to both the script name and the likely alias
 complete -F _hypractivity_completions hypractivity
 
