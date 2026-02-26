@@ -208,7 +208,7 @@ case "$COMMAND" in
         ;;
 
     *)
-        echo "Usage: hypr-activity <command> [arg]"
+        echo "Usage: hypractivity <command> [arg]"
         echo "Commands: next, prev, switch <name>, list, info [name], delete <name>"
         exit 1
         ;;
