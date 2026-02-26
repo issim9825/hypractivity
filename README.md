@@ -50,11 +50,13 @@ Copy the `completion.sh` content to `~/.config/hypr/scripts/hypractivity-complet
 # In ~/.bashrc of ~/.zshrc
 source ~/.config/hypr/scripts/hypractivity-completion.sh
 ```
+
 or copy the completion to the bash-completion folder and source it
+
 ```bash
-sudo sp hypractivity-completion.bash /usr/share/bash-completion/completion/hypractivity
+sudo cp ./hypractivity-completion.bash /usr/share/bash-completion/completion/hypractivity
 # in ~/.bashrc or ~/.zshrc
-source /usr7share/bash-completion/completion/hypractivity
+source /usr/share/bash-completion/completion/hypractivity
 ```
 
 ## Usage & Commands
@@ -82,8 +84,8 @@ You can map these commands to gestures or keybinds in your `hyprland.conf`:
 
 ```conf
 # Example: Script in global PATH
-bind = SUPER, TAB, exec, hypr-activity next
-bind = SUPER SHIFT, TAB, exec, hypr-activity prev
+bind = SUPER, TAB, exec, hypractivity next
+bind = SUPER SHIFT, TAB, exec, hypractivity prev
 
 ```
 
