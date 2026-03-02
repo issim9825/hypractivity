@@ -203,7 +203,10 @@ case "$COMMAND" in
         fi
         ;;
 
-   # Shift away the "delete" command so only the names remain in $@
+    delete)
+        [ -z "$ARG" ] || [ "$ARG" == "default" ] && echo "Error: Cannot delete 'default' or missing argument" && exit 1
+        
+        # Shift away the "delete" command so only the names remain in $@
         shift
         
         # Check if we have at least one activity name provided
@@ -245,6 +248,7 @@ case "$COMMAND" in
 
             notify-send "Activity Deleted" "All windows in '$ARG' have been closed." -t 1500
         done
+        ;;
    *)
         echo "Usage: hypractivity <command> [arg]"
         cat <<EOF
