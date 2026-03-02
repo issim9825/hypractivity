@@ -47,22 +47,6 @@ stash_active() {
     
     # Get all windows not on a special workspace
     local windows=$(hyprctl clients -j | jq -c '.[] | select(.workspace.id > 0)')
-    local win_count=$(echo "$windows" | jq '. | length')
-    
-    # --- AUTO-CLEANUP LOGIC ---
-    # If switching away and ONLY kitty is open, delete the activity and kill kitty
-    if [ "$win_count" -eq 1 ] && [ "$activity" != "default" ]; then
-        local win_class=$(echo "$windows" | jq -r '.[0].class')
-        if [ "$win_class" == "kitty" ]; then
-            local win_addr=$(echo "$windows" | jq -r '.[0].address')
-            echo "Auto-deleting ephemeral activity $activity (only kitty open)"
-            hyprctl dispatch closewindow "address:$win_addr"
-            sed -i "/^$activity$/d" "$LIST_FILE"
-            rm -f "$STATE_DIR/$activity.map"
-            rm -f "$STATE_DIR/$activity.last_ws"
-            return 0
-        fi
-    fi
 
     if [ ! -z "$windows" ] && [ "$windows" != "[]" ]; then
         # Map address to workspace ID for restoration
@@ -149,6 +133,7 @@ case "$COMMAND" in
         if ! grep -qxF "$ARG" "$LIST_FILE"; then
             echo "$ARG" >> "$LIST_FILE"
             echo "Created new activity: $ARG"
+            NEW_INITIALIZATION=true
         fi
 
         # If we are already on this activity, no need to do anything
@@ -158,6 +143,12 @@ case "$COMMAND" in
         stash_active "$CURRENT_ACT"
         echo "$ARG" > "$CURRENT_ACT_FILE"
         restore_target "$ARG"
+
+         # Launch kitty on workspace 1 if this is a brand new activity
+        if [ "$NEW_INITIALIZATION" = true ]; then
+            hyprctl dispatch workspace 1
+            hyprctl dispatch exec kitty
+        fi
         
         notify-send "Activity Switched" "Active: $ARG" -t 1500
         ;;
@@ -212,38 +203,48 @@ case "$COMMAND" in
         fi
         ;;
 
-    delete)
-        [ -z "$ARG" ] || [ "$ARG" == "default" ] && echo "Error: Cannot delete 'default' or missing argument" && exit 1
+   # Shift away the "delete" command so only the names remain in $@
+        shift
         
-        # Determine windows to close
-        windows_to_kill=""
-        if [ "$ARG" == "$CURRENT_ACT" ]; then
-             # If deleting current, find all windows on normal workspaces
-             windows_to_kill=$(hyprctl clients -j | jq -r '.[] | select(.workspace.id > 0) | .address')
-        else
-             # If deleting a stashed activity, find all windows in its special workspace
-             ws_name="special:act_$ARG"
-             windows_to_kill=$(hyprctl clients -j | jq -r --arg ws "$ws_name" '.[] | select(.workspace.name == $ws) | .address')
+        # Check if we have at least one activity name provided
+        if [ $# -eq 0 ]; then
+            echo "Error: Missing argument(s)" && exit 1
         fi
-        
-        # Terminate all windows associated with this activity
-        for addr in $windows_to_kill; do
-            hyprctl dispatch closewindow "address:$addr"
+
+        # Loop through every argument provided (activity1, activity2, etc.)
+        for ARG in "$@"; do
+            # Skip if user tries to delete 'default'
+            if [ "$ARG" == "default" ]; then
+                echo "Error: Cannot delete 'default'"
+                continue
+            fi
+            
+            # Determine windows to close
+            windows_to_kill=""
+            if [ "$ARG" == "$CURRENT_ACT" ]; then
+                 windows_to_kill=$(hyprctl clients -j | jq -r '.[] | select(.workspace.id > 0) | .address')
+            else
+                 ws_name="special:act_$ARG"
+                 windows_to_kill=$(hyprctl clients -j | jq -r --arg ws "$ws_name" '.[] | select(.workspace.name == $ws) | .address')
+            fi
+            
+            # Terminate all windows associated with this activity
+            for addr in $windows_to_kill; do
+                hyprctl dispatch closewindow "address:$addr"
+            done
+
+            # Cleanup state files and list
+            sed -i "/^$ARG$/d" "$LIST_FILE"
+            rm -f "$STATE_DIR/$ARG.map" "$STATE_DIR/$ARG.last_ws"
+            
+            # If we deleted the current activity, switch to default
+            if [ "$ARG" == "$CURRENT_ACT" ]; then
+                 echo "default" > "$CURRENT_ACT_FILE"
+                 restore_target "default"
+            fi
+
+            notify-send "Activity Deleted" "All windows in '$ARG' have been closed." -t 1500
         done
-
-        # Cleanup state files and list
-        sed -i "/^$ARG$/d" "$LIST_FILE"
-        rm -f "$STATE_DIR/$ARG.map" "$STATE_DIR/$ARG.last_ws"
-        
-        # If we deleted the current activity, we must switch away to 'default'
-        if [ "$ARG" == "$CURRENT_ACT" ]; then
-             echo "default" > "$CURRENT_ACT_FILE"
-             restore_target "default"
-        fi
-
-        notify-send "Activity Deleted" "All windows in '$ARG' have been closed." -t 1500
-        ;;
-
    *)
         echo "Usage: hypractivity <command> [arg]"
         cat <<EOF
