@@ -38,24 +38,29 @@ get_stack() {
 
 # --- Internal: Stash Current Windows ---
 # Moves all windows on non-special workspaces to a special workspace for this activity
+# --- Internal: Stash Current Windows ---
 stash_active() {
     local activity=$1
     echo "Processing stash for: $activity"
     
-    # NEW: Save current workspace ID before switching away
+    # Save current workspace ID before switching away
     hyprctl activeworkspace -j | jq '.id' > "$STATE_DIR/$activity.last_ws"
     
     # Get all windows not on a special workspace
     local windows=$(hyprctl clients -j | jq -c '.[] | select(.workspace.id > 0)')
 
-    if [ ! -z "$windows" ] && [ "$windows" != "[]" ]; then
+    if [ -n "$windows" ] && [ "$windows" != "[]" ]; then
         # Map address to workspace ID for restoration
         echo "$windows" | jq -r '.address + " " + (.workspace.id|tostring)' > "$STATE_DIR/$activity.map"
         
         # Batch move to hidden special workspace unique to this activity
+        local batch_cmd=""
         while read -r addr wid; do
-            hyprctl dispatch movetoworkspacesilent "special:act_$activity,address:$addr"
+            batch_cmd+="dispatch movetoworkspacesilent special:act_$activity,address:$addr; "
         done < "$STATE_DIR/$activity.map"
+        
+        # Execute all moves in a single compositor tick
+        [ -n "$batch_cmd" ] && hyprctl --batch "$batch_cmd"
     else
         # Clear map if no windows exist
         rm -f "$STATE_DIR/$activity.map"
@@ -67,14 +72,24 @@ restore_target() {
     local activity=$1
     echo "Restoring windows for: $activity"
     
-    # First, restore windows to their specific workspaces silently
+    # Batch restore windows to their specific workspaces silently
     if [ -f "$STATE_DIR/$activity.map" ]; then
+        # Get currently valid addresses to prevent crashing on stale/closed windows
+        local valid_addresses=$(hyprctl clients -j | jq -r '.[].address')
+        local batch_cmd=""
+        
         while read -r addr wid; do
-            hyprctl dispatch movetoworkspacesilent "$wid,address:$addr"
+            # Only restore if the window still exists
+            if echo "$valid_addresses" | grep -q "$addr"; then
+                batch_cmd+="dispatch movetoworkspacesilent $wid,address:$addr; "
+            fi
         done < "$STATE_DIR/$activity.map"
+        
+        # Execute all moves in a single compositor tick
+        [ -n "$batch_cmd" ] && hyprctl --batch "$batch_cmd"
     fi
 
-    # NEW: Switch focus back to the workspace where this activity was left
+    # Switch focus back to the workspace where this activity was left
     if [ -f "$STATE_DIR/$activity.last_ws" ]; then
         local target_ws=$(cat "$STATE_DIR/$activity.last_ws")
         hyprctl dispatch workspace "$target_ws"
@@ -203,7 +218,7 @@ case "$COMMAND" in
         fi
         ;;
 
-    delete)
+   delete)
         [ -z "$ARG" ] || [ "$ARG" == "default" ] && echo "Error: Cannot delete 'default' or missing argument" && exit 1
         
         # Shift away the "delete" command so only the names remain in $@
@@ -231,10 +246,15 @@ case "$COMMAND" in
                  windows_to_kill=$(hyprctl clients -j | jq -r --arg ws "$ws_name" '.[] | select(.workspace.name == $ws) | .address')
             fi
             
-            # Terminate all windows associated with this activity
+            # Terminate all windows associated with this activity safely via batching
+            local batch_cmd=""
             for addr in $windows_to_kill; do
-                hyprctl dispatch closewindow "address:$addr"
+                # Make sure to append each closewindow command to the batch string
+                batch_cmd+="dispatch closewindow address:$addr; "
             done
+            
+            # Execute all close commands in a single compositor tick
+            [ -n "$batch_cmd" ] && hyprctl --batch "$batch_cmd"
 
             # Cleanup state files and list
             sed -i "/^$ARG$/d" "$LIST_FILE"
